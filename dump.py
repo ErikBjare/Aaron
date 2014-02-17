@@ -1,8 +1,7 @@
 import requests
+from html.parser import HTMLParser
 
 start_url = "http://www.aaronsw.com/"
-
-saved_urls = []
 
 def crawl(page):
     urls = []
@@ -27,14 +26,13 @@ def crawl(page):
 def url_filter(urls):
     passed = set()
     for url in urls:
-        if url not in saved_urls:
-            if url.find(start_url) != -1:
-                passed.add(url)
-            elif url[0] == "/":
-                passed.add(start_url[:-1] + url)
+        if url.find(start_url) == 0:
+            passed.add(url)
+        elif url[0] == "/":
+            passed.add(start_url[:-1] + url)
     return passed
 
-res = url_filter(["http://www.aaronsw.com/", "http://google.com/", "/weblog/"])
+res = url_filter(["http://www.aaronsw.com/", "http://google.com/", "/weblog/", "http://reddit.com/submit?url=http://www.aaronsw.com/weblog/whowriteswikipedia"])
 assert res == {"http://www.aaronsw.com/", "http://www.aaronsw.com/weblog/"}
 
 def url2path(url):
@@ -51,15 +49,12 @@ def url2path(url):
 assert url2path("http://google.com/asd/") == "./asd/index.html"
 
 def save(page, url):
-    if url in saved_urls:
-        print("URL was already saved {}".format(url))
-        return
     page = page.replace("href=\""+start_url, "href=\"./").replace("href=\"/", "href=\"./")
     i = 0
-    s = re.search(page[i:], "href")
-    while s:
-        print(s)
-    page = page.replace("href=\"")
+    #s = re.search(page[i:], "href")
+    #while s:
+    #    print(s)
+    #page = page.replace("href=\"")
     path = url2path(url)
 
     print(path)
@@ -70,13 +65,34 @@ def save(page, url):
 
 def main():
     urls = {start_url}
-    while urls != set():
+    urls_done = set()
+    while len(urls) > 0:
         url = urls.pop()
-        if url in saved_urls:
-            continue
+        urls_done.add(url)
         r = requests.get(url)
+        urls = urls | (url_filter(parser.feed(r.text)) - urls_done)
         save(r.text, url)
-        urls = urls | url_filter(crawl(r.text))
         print(urls)
 
+class Parser(HTMLParser):
+    def __init__(self, *args, **kwargs):
+        HTMLParser.__init__(self, *args, **kwargs)
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            for attr in attrs:
+                if attr[0] == "href":
+                    url = attr[1].split("#")[0]
+                    if url == "":
+                        continue
+                    self.urls.add(url)
+                    print("Found url: {}".format(url))
+
+    def feed(self, data):
+        self.urls = set()
+        HTMLParser.feed(self, data)
+        return self.urls
+
+
+parser = Parser()
 main()
